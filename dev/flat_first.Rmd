@@ -219,63 +219,33 @@ After inflating the template
 -->
 
 ```{r tests}
-test_that("my_median works properly and show error if needed", {
-  expect_true(my_median(1:12) == 6.5)
-  expect_error(my_median("text"))
+
+
+config <- yaml::read_yaml("C://workspace//gwilenalim//yaml//config.yml")
+
+# chargement du bv de la Vilaine
+bv<-charge_shp_geogwilen(shp="bassin_vilaine", 
+                     scheme="r300_territoire_sage")
+
+
+# test de la fonction
+pop_carroyee<-charge_shp_geogwilen(shp="filosofi2015_carreaux_200m_metropole", 
+                     scheme="r350_eco_socio", 
+                     shp_emprise=bv) 
+
+
+test_that("charge_shp_geogwilen fonctionne sans emprise", {
+  expect_true(inherits(bv, "sf"))
+ expect_true(nrow(bv)>=1)
 })
 
-# Test with your dataset in "inst/"
-datafile <- system.file("nyc_squirrels_sample.csv", package = "geogwilenR")
-nyc_squirrels <- read.csv(datafile, encoding = "UTF-8")
-# Apply test on my function
-test_that("my_median works properly with internal dataset", {
-  expect_equal(my_median(nyc_squirrels[,"hectare_squirrel_number"]), 3)
+test_that("charge_shp_geogwilen fonctionne avec emprise", {
+  expect_true(inherits(pop_carroyee, "sf"))
+ expect_true(nrow(pop_carroyee)>1)
 })
+
 ```
 
-# Calculate the mean of a vector
-
-<!--
-There can be other functions, examples and tests in your flat template.
-Each of them will be inflated in a different file, provided that there is a level-1 or level-2 section title to separate from previous functions.
--->
-
-## Use sub-functions in the same chunk
-
-```{r function-my_other_median}
-#' My Other median
-#'
-#' @param x Vector of Numeric values
-#' @inheritParams stats::median
-#'
-#' @return
-#' Median of vector x
-#' @export
-#'
-#' @examples
-my_other_median <- function(x, na.rm = TRUE) {
-  if (!is.numeric(x)) {stop("x should be numeric")}
-  sub_median(x, na.rm =na.rm)
-}
-
-#' Core of the median not exported
-#' @param x Vector of Numeric values
-#' @inheritParams stats::median
-sub_median <- function(x, na.rm = TRUE) {
-  stats::median(x, na.rm)
-}
-```
-
-```{r examples-my_other_median}
-my_other_median(1:12)
-```
-
-```{r tests-my_other_median}
-test_that("my_median works properly and show error if needed", {
-  expect_true(my_other_median(1:12) == 6.5)
-  expect_error(my_other_median("text"))
-})
-```
 
 <!--
 # There can be development actions
