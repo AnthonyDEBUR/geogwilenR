@@ -43,14 +43,14 @@ and `system.file()` to read it in your examples.
 pkgload::load_all(path = here::here(), export_all = FALSE)
 
 # You will be able to read your example data file in each of your function examples and tests as follows - see chunks below
-datafile <- system.file("nyc_squirrels_sample.csv", package = "geogwilenR")
-nyc_squirrels <- read.csv(datafile, encoding = "UTF-8")
+datafile <- system.file("shp_Vilaine.rdata", package = "geogwilenR")
+load(file=datafile)
 
-nyc_squirrels
+str(shp_Vilaine)
 ```
 
 
-# The first function of the package: Calculate the median of a vector
+# Fonction pour charger une couche de geogwilen en mémoire
 
 <!--
 Create a chunk for the core of the function
@@ -67,19 +67,86 @@ After inflating the template
 -->
 
 ```{r function}
-#' My median
+#' charge_shp_geogwilen
 #'
-#' @param x Vector of Numeric values
-#' @inheritParams stats::median
+#' @param shp Name of the geogwilen table
+#' @param scheme Name of the scheme were geogwilen table is stocked
+#' @param shp_emprise sf object defining the extent of the query (optional)
+#' @param col_geometry geometry name in the data 
 #'
 #' @return
-#' Median of vector x
+#' sf object with result of the query
 #' @export
 #'
 #' @examples
-my_median <- function(x, na.rm = TRUE) {
-  if (!is.numeric(x)) {stop("x should be numeric")}
-  stats::median(x, na.rm = na.rm)
+charge_shp_geogwilen <- function(shp, scheme, shp_emprise=NULL, col_geometry=NULL) {
+  if (!is.null(shp_emprise)) {
+    if (!inherits(shp_emprise, "sf")) {
+    stop("shp_emprise should be a sf")
+    }
+  }
+  
+  if (!is.null(col_geometry)) {
+    if (!inherits(col_geometry, "character")) {
+    stop("col_geometry should be a character")
+    }
+  }
+  
+  # Se connecter à la base de données PostGIS
+con <- dbConnect(RPostgres::Postgres(),
+                 host = config$host,
+                 port = config$port,
+                 user = config$user,
+                 password = config$password,
+                 dbname = config$dbname)
+   
+
+# si la colonne geometry n'est pas explicitement nommée, on cherche l'existence d'une colonne geom ou geometry dans la base
+if(is.null(col_geometry))
+{# on recherche le nom de colonne geometry dans la base
+col_names_query <- paste0("SELECT column_name FROM information_schema.columns 
+                          WHERE table_schema = '",scheme,"' AND table_name = '",shp,"';")
+col_names <- dbGetQuery(con, col_names_query)
+col_names <- col_names$column_name
+
+if(!("geom"%in%col_names | 
+     "geometry"%in%col_names)){stop("impossible de determiner le nom de la colonne de geometry. Merci de renseigner le parametre col_geometry")}else{
+       col_geometry<-ifelse("geom"%in%col_names,"geom", "geometry")
+       }
+  }
+
+if (!is.null(shp_emprise)) {
+  
+  # Obtenir le SRID de la table
+  srid_query <- paste0("SELECT Find_SRID('", scheme, "', '", shp, "', '", col_geometry, "') AS srid;")
+  srid_result <- dbGetQuery(con, srid_query)
+  srid <- srid_result$srid
+  
+  
+  # reprojection en lambert 93 de shp_emprise
+  shp_emprise<-st_transform(shp_emprise, st_crs=srid)
+  
+ 
+  # Convertir l'objet sf en WKT pour utiliser dans la requête SQL
+emprise_wkt <- st_as_text(st_union(shp_emprise), EWKT = FALSE)
+
+
+# Construire la requête SQL pour sélectionner les données
+query <- paste0("SELECT * FROM \"",scheme,"\".\"",shp, "\" AS shp
+                 WHERE ST_Within(",col_geometry,", ST_GeomFromText('", emprise_wkt, "', 2154));")
+
+}else
+{
+  query <- paste0("SELECT * FROM \"",scheme,"\".\"",shp, "\";")
+}
+    
+# Exécuter la requête et rapatrier les données
+result <- st_read(con, query = query)
+
+ # Fermer la connexion
+  dbDisconnect(con)
+
+return(result)
 }
 ```
 
@@ -98,13 +165,44 @@ After inflating the template
 -->
 
 ```{r examples}
-my_median(1:12)
 
-# Example with your dataset in "inst/"
-datafile <- system.file("nyc_squirrels_sample.csv", package = "geogwilenR")
-nyc_squirrels <- read.csv(datafile, encoding = "UTF-8")
-# Apply my function
-my_median(nyc_squirrels[,"hectare_squirrel_number"])
+config <- yaml::read_yaml("C://workspace//gwilenalim//yaml//config.yml")
+# chargement de l'objet shp_Vilaine
+datafile <- system.file("shp_Vilaine.rdata", package = "geogwilenR")
+load(file=datafile)
+
+# chargement du bv de la Vilaine
+bv<-charge_shp_geogwilen(shp="bassin_vilaine", 
+                     scheme="r300_territoire_sage")
+
+
+# test de la fonction
+pop_carroyee<-charge_shp_geogwilen(shp="filosofi2015_carreaux_200m_metropole", 
+                     scheme="r350_eco_socio", 
+                     shp_emprise=bv) 
+
+pop_carroyee<-charge_shp_geogwilen(shp="Filosofi2017_carreaux_200m_bzh_pdl", 
+                     scheme="r350_eco_socio", 
+                     shp_emprise=bv) 
+
+# test de la fonction
+step<-charge_shp_geogwilen(shp="r621_step_vilaine_xy_ste", 
+                     scheme="r621_step", 
+                     shp_emprise=NULL) 
+
+
+step_vilaine<-charge_shp_geogwilen(shp="bdd_step_fr", 
+                     scheme="m621_step", 
+                     shp_emprise=bv) 
+
+
+# 
+# options(viewer = NULL) 
+# library(mapview)
+# mapview(shp_Vilaine) + mapview(step_vilaine)
+# 
+
+
 ```
 
 <!--
